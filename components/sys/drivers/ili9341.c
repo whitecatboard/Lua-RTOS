@@ -100,7 +100,7 @@ static const uint8_t ILI9341_init[] = {
   0x28,
   ILI9341_VMCTR2, 1,  								//VCM control2
   0x86,
-  ILI9341_RDMADCTL, 1,    								// Memory Access Control
+  ST7735_MADCTL, 1,    								// Memory Access Control
   0x48,
   ILI9341_PIXFMT, 1,
   0x55,
@@ -347,7 +347,7 @@ void ili9341_set_orientation(uint8_t m) {
 		break;
 	}
 
-	gdisplay_ll_command(ILI9341_RDMADCTL);
+	gdisplay_ll_command(ST7735_MADCTL);
 	gdisplay_ll_data(&madctl, 1);
 }
 
@@ -385,6 +385,8 @@ void ili9341_tp_get(int *x, int *y, int *z, uint8_t raw) {
 	    result = ili9341_tp_read(0xB0, 3);
 		if (result > 50)  {
 			// tp pressed
+			*z = result;
+
 			result = ili9341_tp_read(0xD0, 10);
 			if (result >= 0) {
 				*x = result;
@@ -394,10 +396,10 @@ void ili9341_tp_get(int *x, int *y, int *z, uint8_t raw) {
 			}
 		}
 
-		if (result <= 50) {
+		if (result < 0) {
 			*x = 0;
 			*y = 0;
-			*z = 0;
+			*z = result;
 			return;
 		}
 
