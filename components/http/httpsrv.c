@@ -131,11 +131,11 @@ typedef struct {
 static http_server_config http_normal = HTTP_Normal_initializer;
 static http_server_config http_secure = HTTP_Secure_initializer;
 
-int is_lua(char *name) {
+int is_luasp(char *name) {
 	char *ext = strrchr(name, '.');
 	if (!ext) return 0;
 
-	if (strcmp(ext, ".lua")  == 0) return 1;
+	if (strcmp(ext, ".luasp")  == 0) return 1;
 	return 0;
 }
 
@@ -636,7 +636,7 @@ void send_file(http_request_handle *request, char *path, struct stat *statbuf) {
 	FILE *file = fopen(path, "r");
 	if (!file) {
 		send_error(request, 403, "Forbidden", NULL, "Access denied.");
-	} else if (is_lua(path)) {
+	} else if (is_luasp(path)) {
 		fclose(file);
 
 		lua_State *L = luaS_callback_state(http_callback);

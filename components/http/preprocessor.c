@@ -51,19 +51,25 @@
 
 #include <sys/syslog.h>
 
+// from httpsrv.c
+#define PRINTF_BUFFER_SIZE_INITIAL 256
+#define PRINT_MAXLINE 200
+
 int http_preprocess_lua_page(const char *ipath, const char *opath) {
     FILE *ifp; // Input file
     FILE *ofp; // Output file
 
     int c;
-    int nested = 0;
-    int print = 0;
-    char string;
-    char lua = 0;
-    char delim;
-	char io_write = 0;
-	char add_cr = 0;
+    int lc = 0;
+    char lua = 0; // kind of text we are currently reading
+    // 0: verbatim text;
+    // 1: lua tag found, we still need to decide if there is a '=' to follow
+    // 2: statment lua code (eg: <?lua ... ?> )
+    // 3: expression lua code ( eg: <?lua 1+2 ?> )
     char buff[6];
+    // avoid line longer than PRINTF_BUFFER_SIZE_INITIAL, as they will trigger a memory allocation in do_print()
+    // they may even silently fail if they are longer than BUFFER_SIZE_MAX
+    int line_len = 0; // length of the current verbatim line
 
     const char *bt = "<?lua";
     const char *et = "?>";
@@ -81,151 +87,100 @@ int http_preprocess_lua_page(const char *ipath, const char *opath) {
     // Open output file
     ofp = fopen(opath,"w+");
     if (!ofp) {
-		fclose(ifp);
+        fclose(ifp);
 
         return -1;
     }
 
-	string = 0;
-	*cbuff = '\0';
+    *cbuff = '\0';
 
-	fprintf(ofp, "do\n");
-	fprintf(ofp, "local print = net.service.http.print_chunk\n");
-
+    fprintf(ofp, "do\n");
+    fprintf(ofp, "local print = http_internal_handle and net.service.http.print_chunk or print\n"); // can be run in console
+    fprintf(ofp, "local _w = http_internal_handle and net.service.http.print_chunk or io.write\n");
     while((c = fgetc(ifp)) != EOF) {
-    	if (c == '"') {
-    		if (!string) {
-    			delim = '\"';
-    			string = 1;
-    		} else {
-    			if (c == delim) {
-    				string = 0;
-    			}
-    		}
-    	} else if (c == '\'') {
-    		if (!string) {
-    			delim = '\'';
-    			string = 1;
-    		} else {
-    			if (c == delim) {
-    				string = 0;
-    			}
-    		}
-    	}
 
-		if (c == *cbt) {
-			nested++;
+        if (!lua && (c == *cbt)) { // in opening lua mark
+            cbt++;
+            if (!*cbt) { // end of mark reached, switch to lua
+                lua = 1;
+                cbuff = buff;  // drop buffer content
+                if (line_len > 0) {
+                    fprintf(ofp, "]]\n");
+                }
+                line_len = 0;
+            } else {
+                *cbuff++ = c;
+            }
 
-			cbt++;
-			if (!*cbt) {
-				lua = 1;
-				add_cr = 1;
-				cbuff = buff;
+            *cbuff = '\0';
+        } else if (lua == 1 && c == '=') { // shortand lua tag
+              lua = 3;
+              fprintf(ofp, "_w(");
+        } else if (lua && (c == *cet)) {  // in closing lua mark
+            cet++;
+            if (!*cet) { // end of mark, switch to text
+                cbuff = buff;  // drop buffer content
+                if (lua == 3) {
+                    fprintf(ofp, ")\n");  // end of lua expression
+                } else {
+                    fprintf(ofp, "\n");  // end of user lua statement
+                }
+                lua = 0;
+            } else {
+                *cbuff++ = c;
+            }
 
-				if (nested > 1) {
-					if (print) {
-						fprintf(ofp, "\")\n");
-						io_write = 1;
-					}
-				}
-			} else {
-				*cbuff++ = c;
-			}
+            *cbuff = '\0';
+        } else { // not in mark
+		    if (lua == 1) {
+                lua = 2; // normal lua code
+            }
+            cbt = bt;
+            cet = et;
 
-			*cbuff = '\0';
-			continue;
-		} else if (c == *cet) {
-			nested--;
+            // output buffered mark
+            cbuff = buff; // reset mark buffer
+            if (*cbuff) {
+                if (!lua && line_len == 0) {
+                    fprintf(ofp, "_w[[\n");
+                }
+                fprintf(ofp, "%s", cbuff); // we can output buffer in one go, as it is only a part of the mark like "<?l" and
+                // cannot contains special characters like '\n' or ']'
+                line_len++; // slightly under estimated, but we don't care about the real length
+                *cbuff = '\0';
+            }
 
-			cet++;
-			if (!*cet) {
-				lua = 0;
-				add_cr = 1;
-
-				if (nested > 0) {
-					if (print) {
-						fprintf(ofp, "\nprint(\"");
-						io_write = 1;
-					}
-				}
-
-				cbuff = buff;
-			} else {
-				*cbuff++ = c;
-			}
-
-			*cbuff = '\0';
-			continue;
-		} else {
-			cbt = bt;
-			cet = et;
-
-			cbuff = buff;
-
-			while (*cbuff) {
-				if (c == '\n') {
-					if (io_write) {
-						fprintf(ofp, "\")\n");
-						io_write = 0;
-						print = 0;
-					}
-				} else if (c == '\r') {
-					continue;
-				} else if (c == '\"') {
-					fprintf(ofp, "\\%c",c);
-				} else {
-					if (!io_write) {
-						if (add_cr) {
-							fprintf(ofp, "\n");
-							add_cr = 0;
-						}
-						fprintf(ofp, "print(\"");
-						io_write = 1;
-						print = 1;
-					}
-					fprintf(ofp, "%c",*cbuff);
-				}
-
-				cbuff++;
-			}
-
-			if (!lua) {
-				if (c == '\n') {
-					if (io_write) {
-						fprintf(ofp, "\")\n");
-						io_write = 0;
-						print = 0;
-					}
-				} else if (c == '\r') {
-					continue;
-				} else if (c == '\"') {
-					fprintf(ofp, "\\%c",c);
-				} else {
-					if (!io_write) {
-						if (add_cr) {
-							fprintf(ofp, "\n");
-							add_cr = 0;
-						}
-						fprintf(ofp, "print(\"");
-						io_write = 1;
-						print = 1;
-					}
-					fprintf(ofp, "%c",c);
-				}
-			} else {
-				fprintf(ofp, "%c",c);
-			}
-
-			cbuff = buff;
-			*cbuff = '\0';
-		}
+            if (!lua) {
+                if (c == ']' && c == lc) {// escape long string end marker
+                    fprintf(ofp, "]\n_w']'\n");
+                    line_len = 0;
+                } else if (c == '[' && c == lc) { // escape long string marker
+                    fprintf(ofp, "]]\n");
+                    line_len = 0;
+                } else if (c == '\n') {
+                    if (line_len > PRINT_MAXLINE) {
+                        fprintf(ofp, "\n]]\n");
+                        line_len = 0;
+                    }
+                } else if (c == '\r') {
+                    lc = c; // remember last char
+                    continue;
+                }
+                if (0 == line_len) {
+                    fprintf(ofp, "_w[[\n");
+                }
+                line_len++;
+            }
+            fprintf(ofp, "%c", c);
+        }
+        lc = c; // remember last char
     }
 
-    if (io_write) {
-		fprintf(ofp, "\")\n");
+    if (line_len > 0) {
+        fprintf(ofp, "]]\n");
     }
 
-	fprintf(ofp, "end");
+    fprintf(ofp, "end");
 
     fclose(ifp);
     fclose(ofp);
