@@ -519,6 +519,9 @@ static const LUA_REG_TYPE syslib[] =
 #if CONFIG_LUA_RTOS_USE_RSYSLOG
   { LSTRKEY( "rsyslog" ),     LFUNCVAL( os_setrsyslog ) },
 #endif
+#if CONFIG_LUA_RTOS_LUA_USE_MQTT
+  { LSTRKEY( "msyslog" ),     LFUNCVAL( os_setmsyslog ) },
+#endif
   { LSTRKEY( "stats" ),       LFUNCVAL( os_stats ) },
   { LSTRKEY( "format" ),      LFUNCVAL( os_format ) },
   { LSTRKEY( "history" ),     LFUNCVAL( os_history ) },

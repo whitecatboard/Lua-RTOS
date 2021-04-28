@@ -567,6 +567,33 @@ static int os_setrsyslog(lua_State *L) {
 }
 #endif
 
+#if CONFIG_LUA_RTOS_LUA_USE_MQTT
+static int os_setmsyslog(lua_State *L) {
+    if (lua_gettop(L) > 0) {
+        if (lua_type(L, 1) == LUA_TNIL) {
+          syslog_setlogmqtt(0, NULL);
+          return 0;
+        }
+        const char *topic = luaL_optstring(L, 2, NULL); //order matters
+        luaL_checktype(L, 1, LUA_TUSERDATA);
+        lua_pushvalue(L, 1);
+        int mqtt_ref = luaL_ref(L, LUA_REGISTRYINDEX);
+        const int ret = syslog_setlogmqtt(mqtt_ref, topic);
+        if (ret) {
+          lua_rawgeti(L, LUA_REGISTRYINDEX, ret);
+          return 1;
+        }
+        return 0;
+    }
+    const int ret = syslog_getlogmqtt();
+    if (ret) {
+      lua_rawgeti(L, LUA_REGISTRYINDEX, ret);
+      return 1;
+    }
+    return 0;
+}
+#endif
+
 static int os_stats(lua_State *L) {
     const char *stat = luaL_optstring(L, 1, NULL);
 

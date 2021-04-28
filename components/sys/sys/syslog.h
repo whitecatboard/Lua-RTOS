@@ -173,5 +173,12 @@ void syslog(int, const char *, ...);
 void vsyslog(int, const char *, va_list);
 int getlogmask();
 int getlogstat();
+#if CONFIG_LUA_RTOS_USE_RSYSLOG
 const char *syslog_setloghost (const char *host);
 const char *syslog_getloghost ();
+#endif
+#if CONFIG_LUA_RTOS_LUA_USE_MQTT
+int syslog_setlogmqtt (const int mqtt_ref, const char *topic);
+int syslog_getlogmqtt ();
+#endif
+
