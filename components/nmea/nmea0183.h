@@ -56,6 +56,7 @@ void nmea_parse(char *sentence);
 int nmea_new_pos();
 double nmea_lat();
 double nmea_lon();
+double nmea_height();
 int nmea_sats();
 
 #endif	/* NMEA0183_H */

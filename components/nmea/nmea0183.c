@@ -55,11 +55,12 @@
 #include <sys/syslog.h>
 
 static char *GPGGA = "GPGGA";  // GPGGA sentence string
+static char *GNGGA = "GNGGA";  // GNGGA sentence string
 //static char *GPRMC = "GPRMC";  // GPRMC sentence string
 //static int  date_updated = 0;  // 0 = date is not updated yet, 1 = updated
 
 // Last position data
-static double lat, lon;
+static double lat, lon, height;
 static int sats;
 static int new_pos = 0;
 
@@ -136,33 +137,32 @@ double nmea_geoloc_to_decimal(char *token) {
 }
 
 // Global Positioning System Fix Data
-// $GPGGA,hhmmss.ss,llll.ll,a,yyyyy.yy,a,x,xx,x.x,x.x,M,x.x,M,x.x,xxxx*hh
+// $GXGGA,hhmmss.ss,llll.ll,a,yyyyy.yy,a,x,xx,x.x,x.x,M,x.x,M,x.x,xxxx*hh
 //
-// 1    = UTC of Position
-// 2    = Latitude
-// 3    = N or S
-// 4    = Longitude
-// 5    = E or W
-// 6    = GPS quality indicator (0=invalid; 1=GPS fix; 2=Diff. GPS fix)
-// 7    = Number of satellites in use [not those in view]
-// 8    = Horizontal dilution of position
-// 9    = Antenna altitude above/below mean sea level (geoid)
-// 10   = Meters  (Antenna height unit)
-// 11   = Geoidal separation (Diff. between WGS-84 earth ellipsoid and
+// 0    = UTC of Position
+// 1    = Latitude
+// 2    = N or S
+// 3    = Longitude
+// 4    = E or W
+// 5    = GPS quality indicator (0=invalid; 1=GPS fix; 2=Diff. GPS fix)
+// 6    = Number of satellites in use [not those in view]
+// 7    = Horizontal dilution of position
+// 8    = Antenna altitude above/below mean sea level (geoid)
+// 9    = Meters  (Antenna height unit)
+// 10   = Geoidal separation (Diff. between WGS-84 earth ellipsoid and
 //        mean sea level.  -=geoid is below WGS-84 ellipsoid)
-// 12   = Meters  (Units of geoidal separation)
-// 13   = Age in seconds since last update from diff. reference station
-// 14   = Diff. reference station ID#
-// 15   = Checksum
-static void nmea_GPGGA(char *sentence) {
-    int    valid = 1; // It's a valid position?
+// 11   = Meters  (Units of geoidal separation)
+// 12   = Age in seconds since last update from diff. reference station
+// 13   = Diff. reference station ID#
+// 14   = Checksum
+static void nmea_GXGGA(char *sentence, char * keyword) {
+    int    valid = 1;
 
     int seq = 0;      // Current nmea sentence field (0 = first after nmea command)
     char *c;
     char *token;
-
     int checksum = 0;
-    int computed_checksum = nmea_initial_checksum(GPGGA);
+    int computed_checksum = nmea_initial_checksum(keyword);
 
     new_pos = 0;
 
@@ -202,6 +202,11 @@ static void nmea_GPGGA(char *sentence) {
             if (seq == 6) {	// Number of satellites in use [not those in view]
                 sats = atoi(token);
             }
+            
+	    if (seq == 8) {	//height
+                height = strtod(token, NULL);
+            }
+
 
             token = c;
             seq++;
@@ -349,9 +354,11 @@ void nmea_parse(char *sentence) {
             }
 
             if (strncmp(GPGGA, token, 5) == 0) {
-                nmea_GPGGA(c);
+                nmea_GXGGA(c, GPGGA);
             //} else if ((strncmp(GPRMC, token, 5) == 0) && (!date_updated)) {
             //    nmea_GPRMC(c);
+	    } else if (strncmp(GNGGA, token, 5) == 0) {
+		    nmea_GXGGA(c, GNGGA);
             } else {
                 break;
             }
@@ -377,6 +384,10 @@ double nmea_lat() {
 
 int nmea_sats() {
     return sats;
+}
+
+double nmea_height() {
+    return height;
 }
 
 #endif
