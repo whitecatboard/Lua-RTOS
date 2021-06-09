@@ -39,6 +39,7 @@
 #include <sys/driver.h>
 #include <sys/syslog.h>
 #include <sys/mutex.h>
+#include <sys/status.h>
 
 #include <drivers/stepper.h>
 #include <drivers/gpio.h>
@@ -531,6 +532,13 @@ driver_error_t *stepper_setup(uint8_t step_pin, uint8_t dir_pin, float min_spd, 
     	esp_intr_alloc(ETS_RMT_INTR_SOURCE, ESP_INTR_FLAG_IRAM, rmt_isr, NULL, &isr_h);
     }
 
+    // Configure interrupts
+    if (!status_get(STATUS_ISR_SERVICE_INSTALLED)) {
+        gpio_install_isr_service(0);
+
+        status_set(STATUS_ISR_SERVICE_INSTALLED, 0x00000000);
+    }
+
     // Attach ISR on step_in to get feedback
     gpio_set_intr_type(stepper[*unit].step_pin, GPIO_INTR_POSEDGE);
     gpio_isr_handler_add(stepper[*unit].step_pin, step_feedback, &stepper[*unit]);
@@ -636,7 +644,7 @@ driver_error_t *stepper_set_position(uint8_t unit, float units) {
     }
 
     stepper_t *pstepper = &stepper[unit];
-    pstepper->pos = units * pstepper->units_per_step;
+    pstepper->pos = units * pstepper->steps_per_unit;
 
     mtx_unlock(&stepper_mutex);
     return NULL;
@@ -790,7 +798,7 @@ void stepper_stop(int mask, uint8_t async) {
     uint8_t channel = 0;
 
     while (testMask != (1 << (NSTEP - 1))) {
-        if (start_mask & testMask) {
+        if (start_mask & testMask & mask) {
             RMTMEM.chan[channel].data32[0].val = 0;
             RMT.conf_ch[channel].conf1.tx_start = 0;
             RMT.conf_ch[channel].conf1.mem_rd_rst = 1;
