@@ -88,6 +88,7 @@ static const gdisplay_t displaydevs[] = {
 	{CHIPSET_ST7735G_144,    st7735_init },
 	{CHIPSET_ST7735_096 ,    st7735_init },
 	{CHIPSET_ILI9341,        ili9341_init},
+	{CHIPSET_ILI9341_BGR,    ili9341_init},
 	{CHIPSET_SSD1306_128_32, ssd1306_init},
 	{CHIPSET_SSD1306_128_64, ssd1306_init},
 	{CHIPSET_SSD1306_96_16,  ssd1306_init},

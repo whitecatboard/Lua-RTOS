@@ -119,8 +119,10 @@
 
 driver_error_t *ili9341_init(uint8_t chip, uint8_t orientation, uint8_t address);
 void ili9341_set_orientation(uint8_t m);
+void ili9341_bgr_set_orientation(uint8_t m);
 
 void ili9341_tp_get(int *x, int *y, int *z, uint8_t raw);
+void ili9341_bgr_tp_get(int *x, int *y, int *z, uint8_t raw);
 void ili9341_tp_set_cal(int calx, int caly);
 
 #endif

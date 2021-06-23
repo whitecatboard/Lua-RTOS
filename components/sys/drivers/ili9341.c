@@ -100,7 +100,7 @@ static const uint8_t ILI9341_init[] = {
   0x28,
   ILI9341_VMCTR2, 1,  								//VCM control2
   0x86,
-  ILI9341_RDMADCTL, 1,    								// Memory Access Control
+  ST7735_MADCTL, 1,    								// Memory Access Control
   0x48,
   ILI9341_PIXFMT, 1,
   0x55,
@@ -210,8 +210,16 @@ driver_error_t *ili9341_init(uint8_t chip, uint8_t orientation, uint8_t address)
 	caps->on = st7735_on;
 	caps->off = st7735_off;
 	caps->invert = st7735_invert;
-	caps->orientation = ili9341_set_orientation;
-	caps->touch_get = ili9341_tp_get;
+	switch (chip) {
+	  case CHIPSET_ILI9341:
+		caps->orientation = ili9341_set_orientation;
+		caps->touch_get = ili9341_tp_get;
+	break;
+	  case CHIPSET_ILI9341_BGR:
+		caps->orientation = ili9341_bgr_set_orientation;
+		caps->touch_get = ili9341_bgr_tp_get;
+	break;
+	}
 	caps->touch_cal = ili9341_tp_set_cal;
 	caps->bytes_per_pixel = 2;
 	caps->rdepth = 5;
@@ -298,10 +306,13 @@ driver_error_t *ili9341_init(uint8_t chip, uint8_t orientation, uint8_t address)
     switch (chipset) {
 		case CHIPSET_ILI9341:
 			gdisplay_ll_command_list(ILI9341_init);
+			ili9341_set_orientation(orientation);
+			break;
+		case CHIPSET_ILI9341_BGR:
+			gdisplay_ll_command_list(ILI9341_init);
+			ili9341_bgr_set_orientation(orientation);
 			break;
     }
-
-    ili9341_set_orientation(orientation);
 
 	// Allocate buffer
 	if (!gdisplay_ll_allocate_buffer(ST7735_BUFFER)) {
@@ -347,7 +358,43 @@ void ili9341_set_orientation(uint8_t m) {
 		break;
 	}
 
-	gdisplay_ll_command(ILI9341_RDMADCTL);
+	gdisplay_ll_command(ST7735_MADCTL);
+	gdisplay_ll_data(&madctl, 1);
+}
+
+void ili9341_bgr_set_orientation(uint8_t m) {
+	gdisplay_caps_t *caps = gdisplay_ll_get_caps();
+	uint8_t orientation = m & 3; // can't be higher than 3
+	uint8_t madctl = ST7735_MADCTL_BGR;
+
+	caps->ystart = 0;
+	caps->xstart = 0;
+
+
+	switch (orientation) {
+	  case LANDSCAPE:
+		madctl |= ST7735_MADCTL_MV;
+		caps->width  = ILI9341_HEIGHT;
+		caps->height = ILI9341_WIDTH;
+		break;
+	  case PORTRAIT:
+		madctl |= ST7735_MADCTL_MY;
+		caps->width  = ILI9341_WIDTH;
+		caps->height = ILI9341_HEIGHT;
+		break;
+	  case LANDSCAPE_FLIP:
+		madctl |= ST7735_MADCTL_MX | ST7735_MADCTL_MY | ST7735_MADCTL_MV;
+		caps->width  = ILI9341_HEIGHT;
+		caps->height = ILI9341_WIDTH;
+		break;
+	  case PORTRAIT_FLIP:
+		madctl |= ST7735_MADCTL_MX;
+		caps->width  = ILI9341_WIDTH;
+		caps->height = ILI9341_HEIGHT;
+		break;
+	}
+
+	gdisplay_ll_command(ST7735_MADCTL);
 	gdisplay_ll_data(&madctl, 1);
 }
 
@@ -385,6 +432,8 @@ void ili9341_tp_get(int *x, int *y, int *z, uint8_t raw) {
 	    result = ili9341_tp_read(0xB0, 3);
 		if (result > 50)  {
 			// tp pressed
+			*z = result;
+
 			result = ili9341_tp_read(0xD0, 10);
 			if (result >= 0) {
 				*x = result;
@@ -394,10 +443,10 @@ void ili9341_tp_get(int *x, int *y, int *z, uint8_t raw) {
 			}
 		}
 
-		if (result <= 50) {
+		if (result < 0) {
 			*x = 0;
 			*y = 0;
-			*z = 0;
+			*z = result;
 			return;
 		}
 
@@ -407,9 +456,10 @@ void ili9341_tp_get(int *x, int *y, int *z, uint8_t raw) {
 		int ybottom = tp_caly & 0x3FFF;
 
 		if (((xright - xleft) != 0) && ((ybottom - ytop) != 0)) {
-			*x = ((*x - xleft) * 320) / (xright - xleft);
-			*y = ((*y - ytop) * 240) / (ybottom - ytop);
+			*x = ((*x - xleft) * ILI9341_WIDTH) / (xright - xleft);
+			*y = ((*y - ytop) * ILI9341_HEIGHT) / (ybottom - ytop);
 		}
+
 		else {
 			*z = 0;
 			*x = 0;
@@ -418,9 +468,9 @@ void ili9341_tp_get(int *x, int *y, int *z, uint8_t raw) {
 		}
 
 		if (*x < 0) *x = 0;
-		if (*x > 319) *x = 319;
+		if (*x >= ILI9341_WIDTH) *x = ILI9341_WIDTH-1;
 		if (*y < 0) *y = 0;
-		if (*y > 239) *y = 239;
+		if (*y >= ILI9341_HEIGHT) *y = ILI9341_HEIGHT-1;
 
 		gdisplay_caps_t *caps = gdisplay_ll_get_caps();
 
@@ -443,4 +493,74 @@ void ili9341_tp_get(int *x, int *y, int *z, uint8_t raw) {
 	}
 }
 
+void ili9341_bgr_tp_get(int *x, int *y, int *z, uint8_t raw) {
+	int result = -1;
+	int tmp;
+
+	*x = 0;
+	*y = 0;
+	*z = 0;
+
+	result = ili9341_tp_read(0xB0, 3);
+	if (result > 50)  {
+		// tp pressed
+		*z = result;
+
+		result = ili9341_tp_read(0xD0, 10);
+		if (result >= 0) {
+			*x = result;
+
+			result = ili9341_tp_read(0x90, 10);
+			if (result >= 0) *y = result;
+		}
+	}
+
+	if (result < 0) {
+		*x = 0;
+		*y = 0;
+		*z = result;
+		return;
+	}
+
+	if (!raw) {
+		int xleft   = (tp_calx >> 16) & 0x3FFF;
+		int xright  = tp_calx & 0x3FFF;
+		int ytop    = (tp_caly >> 16) & 0x3FFF;
+		int ybottom = tp_caly & 0x3FFF;
+
+		if (((xright - xleft) != 0) && ((ybottom - ytop) != 0)) {
+			*x = ((*x - xleft) * ILI9341_WIDTH) / (xright - xleft);
+			*y = ((*y - ytop) * ILI9341_HEIGHT) / (ybottom - ytop);
+		} else {
+			*z = 0;
+			*x = 0;
+			*y = 0;
+			return;
+		}
+
+		if (*x < 0) *x = 0;
+		if (*x >= ILI9341_WIDTH) *x = ILI9341_WIDTH-1;
+		if (*y < 0) *y = 0;
+		if (*y >= ILI9341_HEIGHT) *y = ILI9341_HEIGHT-1;
+
+		gdisplay_caps_t *caps = gdisplay_ll_get_caps();
+
+		switch (caps->orient) {
+			case LANDSCAPE:
+				tmp = *x;
+				*x = ILI9341_HEIGHT - *y - 1;
+				*y = tmp;
+				break;
+			case LANDSCAPE_FLIP:
+				tmp = *x;
+				*x = *y;
+				*y = ILI9341_WIDTH - tmp - 1;
+				break;
+			case PORTRAIT_FLIP :
+				*x = ILI9341_WIDTH - *x - 1;
+				*y = ILI9341_HEIGHT - *y - 1;
+				break;
+		}
+	}
+}
 #endif
