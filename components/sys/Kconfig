@@ -225,8 +225,8 @@ menu "Lua RTOS"
          help
             Baud rate to use by the Lua RTOS console.
 
-      config LUA_RTOS_CONSOLE_BR_57200
-         bool "57200 baud"
+      config LUA_RTOS_CONSOLE_BR_57600
+         bool "57600 baud"
 
       config LUA_RTOS_CONSOLE_BR_115200
          bool "115200 baud"
