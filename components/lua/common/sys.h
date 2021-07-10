@@ -84,9 +84,19 @@ lua_State *luaS_callback_state(lua_callback_t *callback);
  *
  * @param callback A pointer to a callback handler created with the luaS_callback_create
  *                 function.
- * @param args Number of argument of the function.
+ * @param args Number of arguments of the function.
  */
 int luaS_callback_call(lua_callback_t *callback, int args);
+
+/**
+ * @brief Call the callback's lua function.
+ *
+ * @param callback A pointer to a callback handler created with the luaS_callback_create
+ *                 function.
+ * @param args Number of arguments of the function.
+ * @param rets Number of return values of the function.
+ */
+int luaS_callback_call_return(lua_callback_t *callback, int args, int rets);
 
 /**
  * @brief Destroy a callback.
